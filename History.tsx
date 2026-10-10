@@ -1,5 +1,15 @@
 import { useRef, useState } from 'react';
-import { FlatList, Modal, Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
+import {
+  FlatList,
+  Modal,
+  Platform,
+  Pressable,
+  StatusBar,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { lastDays, stats, type History as HistoryData } from './history';
@@ -18,13 +28,17 @@ const formatDay = (key: string) => toDate(key).toLocaleDateString(undefined, { d
 
 const RANGES: [number | null, string][] = [
   [null, 'All time'],
-  [7, 'Past 7 days'],
-  [14, 'Past 14 days'],
-  [30, 'Past 30 days'],
-  [90, 'Past 90 days'],
-  [180, 'Past 180 days'],
-  [360, 'Past 360 days'],
+  [7, '7 days'],
+  [14, '14 days'],
+  [30, '30 days'],
+  [90, '90 days'],
+  [180, '180 days'],
+  [360, '360 days'],
 ];
+// Popup height: one 44pt row per range plus 4pt padding top and bottom
+const MENU_HEIGHT = RANGES.length * 44 + 8;
+
+type Section = 'albums' | 'artists';
 
 // Mounted only while open, so it rereads history.json each time (picks up today's export).
 export default function History({ onClose }: Props) {
@@ -35,14 +49,47 @@ export default function History({ onClose }: Props) {
       return { history: {} as HistoryData, error: String(e) };
     }
   });
-  const [range, setRange] = useState<number | null>(null);
-  const [rangeOpen, setRangeOpen] = useState(false);
+  // Each section has its own range
+  const [ranges, setRanges] = useState<Record<Section, number | null>>({ albums: null, artists: null });
+  // Which picker the range popup belongs to and where it sits, measured from that picker; null while closed
+  const [menu, setMenu] = useState<{ which: Section; pos: { right: number; top: number } } | null>(null);
+  const pickerRefs = { albums: useRef<View>(null), artists: useRef<View>(null) };
+  const win = useWindowDimensions();
   const [openAlbum, setOpenAlbum] = useState<number | null>(null);
   const listRef = useRef<FlatList<string>>(null);
   // Stats follow the range; the day list below always shows every day, so a jump always has a row to land on
-  const s = stats(range ? lastDays(history, range) : history);
+  const statsFor = (n: number | null) => stats(n ? lastDays(history, n) : history);
+  const s = statsFor(ranges.albums);
+  const artistStats = statsFor(ranges.artists);
   const days = Object.keys(history).sort().reverse();
-  const rangeLabel = RANGES.find(([n]) => n === range)![1];
+
+  function openRange(which: Section) {
+    pickerRefs[which].current?.measureInWindow((x, y, w, h) => {
+      // Opens below unless that runs off screen; the artists picker can sit low when the list is unscrolled
+      const below = y + h + 6;
+      const top = below + MENU_HEIGHT > win.height ? Math.max(8, y - 6 - MENU_HEIGHT) : below;
+      setMenu({ which, pos: { right: win.width - (x + w), top } });
+    });
+  }
+
+  const picker = (which: Section) => {
+    const label = RANGES.find(([n]) => n === ranges[which])![1];
+    return (
+      <Pressable
+        ref={pickerRefs[which]}
+        onPress={() => openRange(which)}
+        hitSlop={12}
+        style={({ pressed }) => [styles.range, pressed && styles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel={`Top ${which} time range: ${label}`}
+        accessibilityHint="Opens a menu of time ranges"
+        accessibilityState={{ expanded: menu?.which === which }}
+      >
+        <Text style={styles.label}>{label}</Text>
+        <Ionicons name="chevron-down" size={13} color={color.mute} />
+      </Pressable>
+    );
+  };
 
   const jumpTo = (key: string) => listRef.current?.scrollToIndex({ index: days.indexOf(key), viewPosition: 0 });
 
@@ -60,38 +107,12 @@ export default function History({ onClose }: Props) {
           <Text style={styles.summary}>
             {s.days} {s.days === 1 ? 'day' : 'days'} logged
           </Text>
-          {/* Inline, not an overlay: an absolute menu inside a FlatList header gets clipped on Android */}
-          <Pressable
-            onPress={() => setRangeOpen((o) => !o)}
-            style={({ pressed }) => [styles.range, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel={`Time range: ${rangeLabel}`}
-            accessibilityState={{ expanded: rangeOpen }}
-          >
-            <Text style={styles.rangeText}>{rangeLabel}</Text>
-            <Ionicons name={rangeOpen ? 'chevron-up' : 'chevron-down'} size={16} color={color.text} />
-          </Pressable>
-          {rangeOpen && (
-            <View style={styles.menu}>
-              {RANGES.map(([n, label]) => (
-                <Pressable
-                  key={label}
-                  onPress={() => {
-                    setRange(n);
-                    setRangeOpen(false);
-                  }}
-                  style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: n === range }}
-                >
-                  <Text style={[styles.menuText, n === range && styles.menuTextOn]}>{label}</Text>
-                  {n === range && <Ionicons name="checkmark" size={18} color={color.text} />}
-                </Pressable>
-              ))}
-            </View>
-          )}
-          {s.days === 0 && <Text style={styles.empty}>No days in this range.</Text>}
-          {s.days > 0 && <Text style={styles.section}>Top albums</Text>}
+          {/* Always shown, even for an empty range, so the range picker never disappears */}
+          <View style={[styles.sectionRow, styles.section]}>
+            <Text style={styles.label}>Top albums</Text>
+            {picker('albums')}
+          </View>
+          {s.days === 0 && <Text style={styles.rangeEmpty}>No days in this range.</Text>}
           {s.topAlbums.slice(0, 10).map(({ album, count, days: used }) => (
             <View key={album.id}>
               <Pressable
@@ -130,8 +151,12 @@ export default function History({ onClose }: Props) {
               )}
             </View>
           ))}
-          {s.days > 0 && <Text style={styles.section}>Top artists</Text>}
-          {s.topArtists.slice(0, 10).map(({ artistId, name, count }) => (
+          <View style={[styles.sectionRow, styles.section]}>
+            <Text style={styles.label}>Top artists</Text>
+            {picker('artists')}
+          </View>
+          {artistStats.days === 0 && <Text style={styles.rangeEmpty}>No days in this range.</Text>}
+          {artistStats.topArtists.slice(0, 10).map(({ artistId, name, count }) => (
             <View
               key={artistId}
               style={styles.statRow}
@@ -144,7 +169,7 @@ export default function History({ onClose }: Props) {
               <Text style={styles.count}>×{count}</Text>
             </View>
           ))}
-          <Text style={styles.section}>Days</Text>
+          <Text style={[styles.label, styles.section]}>Days</Text>
         </>
       )}
     </View>
@@ -189,6 +214,39 @@ export default function History({ onClose }: Props) {
           </View>
         )}
       />
+      {/* A popup, not an inline list, so picking a range never pushes the stats down */}
+      <Modal
+        visible={!!menu}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        navigationBarTranslucent
+        onRequestClose={() => setMenu(null)}
+      >
+        <Pressable style={styles.scrim} onPress={() => setMenu(null)} accessibilityLabel="Close menu" />
+        {menu && (
+          <View style={[styles.menu, menu.pos]} accessibilityViewIsModal>
+            {RANGES.map(([n, label], i) => {
+              const on = n === ranges[menu.which];
+              return (
+                <Pressable
+                  key={label}
+                  onPress={() => {
+                    setRanges((r) => ({ ...r, [menu.which]: n }));
+                    setMenu(null);
+                  }}
+                  style={({ pressed }) => [styles.menuItem, i > 0 && styles.menuDivider, pressed && styles.menuPressed]}
+                  accessibilityRole="menuitem"
+                  accessibilityState={{ selected: on }}
+                >
+                  <Text style={[styles.menuText, on && styles.menuTextOn]}>{label}</Text>
+                  {on && <Ionicons name="checkmark" size={17} color={color.text} />}
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+      </Modal>
     </Modal>
   );
 }
@@ -225,10 +283,22 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginTop: 2,
   },
-  section: {
+  sectionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  rangeEmpty: {
+    color: color.mute,
+    fontSize: 15,
+  },
+  // Section headings and the range picker share one label style
+  label: {
     color: color.mute,
     fontSize: 13,
     fontWeight: '600',
+  },
+  section: {
     marginTop: 28,
     marginBottom: 8,
   },
@@ -265,33 +335,36 @@ const styles = StyleSheet.create({
   range: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: 6,
-    marginTop: 16,
-    height: 36,
-    paddingHorizontal: 14,
-    borderRadius: 18,
-    backgroundColor: color.raised,
+    gap: 4,
   },
-  rangeText: {
-    color: color.text,
-    fontSize: 15,
-    fontWeight: '600',
+  scrim: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(0,0,0,0.3)',
   },
   menu: {
-    marginTop: 8,
+    position: 'absolute',
+    minWidth: 200,
+    paddingVertical: 4,
     borderRadius: 12,
     backgroundColor: color.raised,
-    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+    boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
   },
   menuItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 16,
     paddingHorizontal: 16,
     height: 44,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: color.line,
+  },
+  menuDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: color.line,
+  },
+  menuPressed: {
+    backgroundColor: color.line,
   },
   menuText: {
     color: color.mute,
