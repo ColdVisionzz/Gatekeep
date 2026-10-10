@@ -19,23 +19,31 @@ export function parseHistory(text: string): History | null {
   }
 }
 
-export type AlbumCount = { album: Album; count: number };
+// The last n days, today included. Calendar math (not ms) so DST shifts never move the cutoff.
+export function lastDays(h: History, n: number, now = new Date()): History {
+  const cutoff = dayKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - (n - 1)));
+  return Object.fromEntries(Object.entries(h).filter(([k]) => k >= cutoff));
+}
+
+export type AlbumCount = { album: Album; count: number; days: string[] };
 export type ArtistCount = { artistId: number; name: string; count: number };
 
 export function stats(h: History) {
   const albums = new Map<number, AlbumCount>();
   const artists = new Map<number, ArtistCount>();
-  for (const day of Object.values(h)) {
+  for (const [key, day] of Object.entries(h)) {
     for (const a of day) {
       // ponytail: editions (remaster, deluxe) have different Deezer IDs and count separately; group by normalized title + artist if that bothers users
-      const al = albums.get(a.id) ?? { album: a, count: 0 };
+      const al = albums.get(a.id) ?? { album: a, count: 0, days: [] };
       al.count++;
+      al.days.push(key);
       albums.set(a.id, al);
       const ar = artists.get(a.artistId) ?? { artistId: a.artistId, name: a.artist, count: 0 };
       ar.count++;
       artists.set(a.artistId, ar);
     }
   }
+  for (const al of albums.values()) al.days.sort().reverse();
   return {
     days: Object.keys(h).length,
     topAlbums: [...albums.values()].sort(

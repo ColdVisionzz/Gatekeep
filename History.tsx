@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { FlatList, Modal, Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
-import { stats, type History as HistoryData } from './history';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { lastDays, stats, type History as HistoryData } from './history';
 import { loadHistory } from './historyStore';
 import DateStamp from './DateStamp';
 import { color } from './theme';
@@ -15,6 +16,16 @@ function toDate(key: string) {
 }
 const formatDay = (key: string) => toDate(key).toLocaleDateString(undefined, { dateStyle: 'long' });
 
+const RANGES: [number | null, string][] = [
+  [null, 'All time'],
+  [7, 'Past 7 days'],
+  [14, 'Past 14 days'],
+  [30, 'Past 30 days'],
+  [90, 'Past 90 days'],
+  [180, 'Past 180 days'],
+  [360, 'Past 360 days'],
+];
+
 // Mounted only while open, so it rereads history.json each time (picks up today's export).
 export default function History({ onClose }: Props) {
   const [{ history, error }] = useState(() => {
@@ -24,8 +35,16 @@ export default function History({ onClose }: Props) {
       return { history: {} as HistoryData, error: String(e) };
     }
   });
-  const s = stats(history);
+  const [range, setRange] = useState<number | null>(null);
+  const [rangeOpen, setRangeOpen] = useState(false);
+  const [openAlbum, setOpenAlbum] = useState<number | null>(null);
+  const listRef = useRef<FlatList<string>>(null);
+  // Stats follow the range; the day list below always shows every day, so a jump always has a row to land on
+  const s = stats(range ? lastDays(history, range) : history);
   const days = Object.keys(history).sort().reverse();
+  const rangeLabel = RANGES.find(([n]) => n === range)![1];
+
+  const jumpTo = (key: string) => listRef.current?.scrollToIndex({ index: days.indexOf(key), viewPosition: 0 });
 
   const header = (
     <View>
@@ -36,32 +55,82 @@ export default function History({ onClose }: Props) {
         </Pressable>
       </View>
       {error && <Text style={styles.error}>Could not read history: {error}</Text>}
-      {s.days > 0 && (
+      {days.length > 0 && (
         <>
           <Text style={styles.summary}>
             {s.days} {s.days === 1 ? 'day' : 'days'} logged
           </Text>
-          <Text style={styles.section}>Top albums</Text>
-          {s.topAlbums.slice(0, 10).map(({ album, count }) => (
-            <View
-              key={album.id}
-              style={styles.statRow}
-              accessible
-              accessibilityLabel={`${album.title} by ${album.artist}, picked ${count} times`}
-            >
-              <Image source={album.thumb} style={styles.statThumb} />
-              <View style={styles.statText}>
-                <Text style={styles.name} numberOfLines={1}>
-                  {album.title}
-                </Text>
-                <Text style={styles.sub} numberOfLines={1}>
-                  {album.artist}
-                </Text>
-              </View>
-              <Text style={styles.count}>×{count}</Text>
+          {/* Inline, not an overlay: an absolute menu inside a FlatList header gets clipped on Android */}
+          <Pressable
+            onPress={() => setRangeOpen((o) => !o)}
+            style={({ pressed }) => [styles.range, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={`Time range: ${rangeLabel}`}
+            accessibilityState={{ expanded: rangeOpen }}
+          >
+            <Text style={styles.rangeText}>{rangeLabel}</Text>
+            <Ionicons name={rangeOpen ? 'chevron-up' : 'chevron-down'} size={16} color={color.text} />
+          </Pressable>
+          {rangeOpen && (
+            <View style={styles.menu}>
+              {RANGES.map(([n, label]) => (
+                <Pressable
+                  key={label}
+                  onPress={() => {
+                    setRange(n);
+                    setRangeOpen(false);
+                  }}
+                  style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: n === range }}
+                >
+                  <Text style={[styles.menuText, n === range && styles.menuTextOn]}>{label}</Text>
+                  {n === range && <Ionicons name="checkmark" size={18} color={color.text} />}
+                </Pressable>
+              ))}
+            </View>
+          )}
+          {s.days === 0 && <Text style={styles.empty}>No days in this range.</Text>}
+          {s.days > 0 && <Text style={styles.section}>Top albums</Text>}
+          {s.topAlbums.slice(0, 10).map(({ album, count, days: used }) => (
+            <View key={album.id}>
+              <Pressable
+                onPress={() => setOpenAlbum((id) => (id === album.id ? null : album.id))}
+                style={({ pressed }) => [styles.statRow, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel={`${album.title} by ${album.artist}, picked ${count} times`}
+                accessibilityHint="Shows the days you picked it"
+                accessibilityState={{ expanded: openAlbum === album.id }}
+              >
+                <Image source={album.thumb} style={styles.statThumb} />
+                <View style={styles.statText}>
+                  <Text style={styles.name} numberOfLines={1}>
+                    {album.title}
+                  </Text>
+                  <Text style={styles.sub} numberOfLines={1}>
+                    {album.artist}
+                  </Text>
+                </View>
+                <Text style={styles.count}>×{count}</Text>
+              </Pressable>
+              {openAlbum === album.id && (
+                <View style={styles.used}>
+                  {used.map((key) => (
+                    <Pressable
+                      key={key}
+                      onPress={() => jumpTo(key)}
+                      style={({ pressed }) => [styles.usedDay, pressed && styles.pressed]}
+                      accessibilityRole="button"
+                      accessibilityHint="Scrolls to this day"
+                    >
+                      <Text style={styles.usedText}>{formatDay(key)}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
             </View>
           ))}
-          <Text style={styles.section}>Top artists</Text>
+          {s.days > 0 && <Text style={styles.section}>Top artists</Text>}
           {s.topArtists.slice(0, 10).map(({ artistId, name, count }) => (
             <View
               key={artistId}
@@ -91,10 +160,16 @@ export default function History({ onClose }: Props) {
       onRequestClose={onClose}
     >
       <FlatList
+        ref={listRef}
         style={styles.sheet}
         contentContainerStyle={styles.content}
         data={days}
         keyExtractor={(k) => k}
+        // Rows past the render window have no layout yet: jump near them by estimate, then land exactly
+        onScrollToIndexFailed={({ index, averageItemLength }) => {
+          listRef.current?.scrollToOffset({ offset: averageItemLength * index, animated: false });
+          setTimeout(() => listRef.current?.scrollToIndex({ index, viewPosition: 0 }), 100);
+        }}
         ListHeaderComponent={header}
         ListEmptyComponent={<Text style={styles.empty}>No days yet. Share a recap to start your history.</Text>}
         renderItem={({ item: key }) => (
@@ -186,6 +261,66 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     fontVariant: ['tabular-nums'],
+  },
+  range: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    marginTop: 16,
+    height: 36,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    backgroundColor: color.raised,
+  },
+  rangeText: {
+    color: color.text,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  menu: {
+    marginTop: 8,
+    borderRadius: 12,
+    backgroundColor: color.raised,
+    overflow: 'hidden',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    height: 44,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: color.line,
+  },
+  menuText: {
+    color: color.mute,
+    fontSize: 16,
+  },
+  menuTextOn: {
+    color: color.text,
+    fontWeight: '600',
+  },
+  used: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingLeft: 56,
+    paddingBottom: 10,
+  },
+  usedDay: {
+    height: 32,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    justifyContent: 'center',
+    backgroundColor: color.raised,
+  },
+  usedText: {
+    color: color.text,
+    fontSize: 14,
+  },
+  pressed: {
+    opacity: 0.7,
   },
   error: {
     color: color.imprint,

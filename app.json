@@ -26,6 +26,14 @@
       "expo-image",
       "expo-sharing",
       [
+        "expo-media-library",
+        {
+          "photosPermission": "Gatekeep saves each recap to its own album in your photos.",
+          "savePhotosPermission": "Gatekeep saves each recap to its own album in your photos.",
+          "granularPermissions": ["photo"]
+        }
+      ],
+      [
         "expo-camera",
         {
           "cameraPermission": "Gatekeep uses the camera to take the photo for your daily recap.",

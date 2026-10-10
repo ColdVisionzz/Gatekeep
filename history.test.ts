@@ -1,6 +1,6 @@
 // Run: npx tsx history.test.ts
 import type { Album } from './albums';
-import { dayKey, parseHistory, stats } from './history';
+import { dayKey, lastDays, parseHistory, stats } from './history';
 
 function eq(actual: unknown, expected: unknown, msg = '') {
   const [a, e] = [JSON.stringify(actual), JSON.stringify(expected)];
@@ -43,6 +43,14 @@ eq(
   [['Radiohead', 4], ['Frank Ocean', 2], ['Fleetwood Mac', 1]],
   'artists grouped by ID across different albums',
 );
+eq(s.topAlbums[0].days, ['2026-01-03', '2026-01-02', '2026-01-01'], 'album days newest first');
+
+const now = new Date(2026, 2, 10);
+const h = { '2026-03-10': [okc], '2026-03-04': [kida], '2026-03-03': [blonde], '2025-12-01': [rumours] };
+eq(Object.keys(lastDays(h, 7, now)), ['2026-03-10', '2026-03-04'], '7 days includes today and 6 before');
+eq(Object.keys(lastDays(h, 90, now)), ['2026-03-10', '2026-03-04', '2026-03-03'], '90 days crosses month ends');
+eq(Object.keys(lastDays(h, 1, now)), ['2026-03-10'], '1 day is today only');
+
 eq(stats({}), { days: 0, topAlbums: [], topArtists: [] });
 
 console.log('history.test.ts: ok');

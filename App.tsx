@@ -7,6 +7,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
+import * as MediaLibrary from 'expo-media-library';
 import { Album } from './albums';
 import AlbumSearch from './AlbumSearch';
 import DateStamp from './DateStamp';
@@ -16,6 +17,17 @@ import { saveDay } from './historyStore';
 import { color } from './theme';
 
 const BAR = 112; // height of the control bar under the frame
+const GALLERY_ALBUM = 'Gatekeep';
+
+// Copies the export into its own album in the photo gallery. Full (not write-only) access, because finding the album by title needs read access.
+// ponytail: under iOS "Limited" access the album may not be found again and a second one gets created; ask for full access if users report duplicates
+async function saveToGallery(uri: string) {
+  const { granted } = await MediaLibrary.requestPermissionsAsync(false, ['photo']);
+  if (!granted) return; // declined: still share, just skip the gallery copy
+  const album = await MediaLibrary.Album.get(GALLERY_ALBUM);
+  if (album) await MediaLibrary.Asset.create(uri, album);
+  else await MediaLibrary.Album.create(GALLERY_ALBUM, [uri], false);
+}
 
 export default function App() {
   return (
@@ -81,9 +93,10 @@ function Recap() {
   }
 
   async function share() {
+    let uri: string;
     try {
       // ponytail: view-shot scales the on-screen view to 1080x1920; on low-density screens this upscales. Render offscreen at full size if exports look soft.
-      const uri = await captureRef(recapRef, { format: 'png', width: 1080, height: 1920 });
+      uri = await captureRef(recapRef, { format: 'png', width: 1080, height: 1920 });
       await Sharing.shareAsync(uri, { mimeType: 'image/png' });
     } catch (e) {
       Alert.alert('Share failed', String(e));
@@ -94,6 +107,12 @@ function Recap() {
       saveDay(dayKey(new Date()), albums as Album[]);
     } catch (e) {
       Alert.alert('Could not save to history', String(e));
+    }
+    // After the share sheet closes: an alert raised while it is up can't present on iOS
+    try {
+      await saveToGallery(uri);
+    } catch (e) {
+      Alert.alert('Could not save to gallery', String(e));
     }
   }
 
