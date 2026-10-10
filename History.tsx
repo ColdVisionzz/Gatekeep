@@ -12,19 +12,14 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { lastDays, stats, type History as HistoryData } from './history';
+import { formatDay, lastDays, stats, toDate, type History as HistoryData } from './history';
+import type { Album } from './albums';
 import { loadHistory } from './historyStore';
+import AlbumPage from './AlbumPage';
 import DateStamp from './DateStamp';
 import { color } from './theme';
 
 type Props = { onClose: () => void };
-
-// "2026-01-05" -> local date. new Date("2026-01-05") would parse as UTC and can land on the previous day.
-function toDate(key: string) {
-  const [y, m, d] = key.split('-').map(Number);
-  return new Date(y, m - 1, d);
-}
-const formatDay = (key: string) => toDate(key).toLocaleDateString(undefined, { dateStyle: 'long' });
 
 const RANGES: [number | null, string][] = [
   [null, 'All time'],
@@ -55,7 +50,7 @@ export default function History({ onClose }: Props) {
   const [menu, setMenu] = useState<{ which: Section; pos: { right: number; top: number } } | null>(null);
   const pickerRefs = { albums: useRef<View>(null), artists: useRef<View>(null) };
   const win = useWindowDimensions();
-  const [openAlbum, setOpenAlbum] = useState<number | null>(null);
+  const [detail, setDetail] = useState<Album | null>(null);
   const listRef = useRef<FlatList<string>>(null);
   // Stats follow the range; the day list below always shows every day, so a jump always has a row to land on
   const statsFor = (n: number | null) => stats(n ? lastDays(history, n) : history);
@@ -113,43 +108,26 @@ export default function History({ onClose }: Props) {
             {picker('albums')}
           </View>
           {s.days === 0 && <Text style={styles.rangeEmpty}>No days in this range.</Text>}
-          {s.topAlbums.slice(0, 10).map(({ album, count, days: used }) => (
-            <View key={album.id}>
-              <Pressable
-                onPress={() => setOpenAlbum((id) => (id === album.id ? null : album.id))}
-                style={({ pressed }) => [styles.statRow, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityLabel={`${album.title} by ${album.artist}, picked ${count} times`}
-                accessibilityHint="Shows the days you picked it"
-                accessibilityState={{ expanded: openAlbum === album.id }}
-              >
-                <Image source={album.thumb} style={styles.statThumb} />
-                <View style={styles.statText}>
-                  <Text style={styles.name} numberOfLines={1}>
-                    {album.title}
-                  </Text>
-                  <Text style={styles.sub} numberOfLines={1}>
-                    {album.artist}
-                  </Text>
-                </View>
-                <Text style={styles.count}>×{count}</Text>
-              </Pressable>
-              {openAlbum === album.id && (
-                <View style={styles.used}>
-                  {used.map((key) => (
-                    <Pressable
-                      key={key}
-                      onPress={() => jumpTo(key)}
-                      style={({ pressed }) => [styles.usedDay, pressed && styles.pressed]}
-                      accessibilityRole="button"
-                      accessibilityHint="Scrolls to this day"
-                    >
-                      <Text style={styles.usedText}>{formatDay(key)}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              )}
-            </View>
+          {s.topAlbums.slice(0, 10).map(({ album, count }) => (
+            <Pressable
+              key={album.id}
+              onPress={() => setDetail(album)}
+              style={({ pressed }) => [styles.statRow, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={`${album.title} by ${album.artist}, picked ${count} times`}
+              accessibilityHint="Opens album page"
+            >
+              <Image source={album.thumb} style={styles.statThumb} />
+              <View style={styles.statText}>
+                <Text style={styles.name} numberOfLines={1}>
+                  {album.title}
+                </Text>
+                <Text style={styles.sub} numberOfLines={1}>
+                  {album.artist}
+                </Text>
+              </View>
+              <Text style={styles.count}>×{count}</Text>
+            </Pressable>
           ))}
           <View style={[styles.sectionRow, styles.section]}>
             <Text style={styles.label}>Top artists</Text>
@@ -214,6 +192,18 @@ export default function History({ onClose }: Props) {
           </View>
         )}
       />
+      {detail && (
+        <AlbumPage
+          album={detail}
+          history={history}
+          onClose={() => setDetail(null)}
+          onPickAlbum={setDetail}
+          onPickDay={(key) => {
+            setDetail(null);
+            jumpTo(key);
+          }}
+        />
+      )}
       {/* A popup, not an inline list, so picking a range never pushes the stats down */}
       <Modal
         visible={!!menu}
@@ -373,24 +363,6 @@ const styles = StyleSheet.create({
   menuTextOn: {
     color: color.text,
     fontWeight: '600',
-  },
-  used: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    paddingLeft: 56,
-    paddingBottom: 10,
-  },
-  usedDay: {
-    height: 32,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    justifyContent: 'center',
-    backgroundColor: color.raised,
-  },
-  usedText: {
-    color: color.text,
-    fontSize: 14,
   },
   pressed: {
     opacity: 0.7,

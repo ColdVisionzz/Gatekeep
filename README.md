@@ -41,6 +41,7 @@ npx tsx history.test.ts
 | `App.tsx` | Main screen: camera, album slots and export |
 | `AlbumSearch.tsx` | Album search modal |
 | `History.tsx` | Past days and statistics |
+| `AlbumPage.tsx` | One album: picked-days calendar, dates and most common pairings |
 | `DateStamp.tsx` | LED-style date display |
 | `albums.ts` | `Album` type and Deezer search |
 | `history.ts` | History parsing and statistics |

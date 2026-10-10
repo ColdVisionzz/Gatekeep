@@ -1,6 +1,6 @@
 // Run: npx tsx history.test.ts
 import type { Album } from './albums';
-import { dayKey, lastDays, parseHistory, stats } from './history';
+import { albumDays, dayKey, lastDays, parseHistory, stats, topCombos } from './history';
 
 function eq(actual: unknown, expected: unknown, msg = '') {
   const [a, e] = [JSON.stringify(actual), JSON.stringify(expected)];
@@ -43,7 +43,21 @@ eq(
   [['Radiohead', 4], ['Frank Ocean', 2], ['Fleetwood Mac', 1]],
   'artists grouped by ID across different albums',
 );
-eq(s.topAlbums[0].days, ['2026-01-03', '2026-01-02', '2026-01-01'], 'album days newest first');
+
+const full = {
+  '2026-01-01': [okc, blonde, rumours, kida],
+  '2026-01-02': [okc, blonde],
+  '2026-01-03': [okc],
+};
+eq(albumDays(full, 1), ['2026-01-03', '2026-01-02', '2026-01-01'], 'album days newest first');
+eq(albumDays(full, 99), [], 'unknown album has no days');
+eq(
+  topCombos(full, 1).map((c) => [c.album.title, c.count]),
+  [['Blonde', 2], ['Kid A', 1], ['Rumours', 1]],
+  'combos by count then title, album itself excluded',
+);
+eq(topCombos(full, 1, 1).length, 1, 'combos limited to n');
+eq(topCombos(full, 99), [], 'unknown album has no combos');
 
 const now = new Date(2026, 2, 10);
 const h = { '2026-03-10': [okc], '2026-03-04': [kida], '2026-03-03': [blonde], '2025-12-01': [rumours] };
