@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Linking, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Alert, Linking, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Image } from 'expo-image';
 import { CameraView, useCameraPermissions, type CameraType } from 'expo-camera';
@@ -171,6 +171,9 @@ function Recap() {
           ) : (
             viewfinder()
           )}
+          <Text accessible={false} pointerEvents="none" style={[styles.mark, { left: pad, top: pad, fontSize: frameW * 0.034 }]}>
+            gatekeep
+          </Text>
           <View style={[styles.overlay, { left: pad, right: pad, bottom: pad, gap: gap * 1.6 }]}>
             <DateStamp date={today} height={frameW * 0.05} />
             <View style={[styles.dock, { gap }]}>
@@ -314,6 +317,15 @@ const styles = StyleSheet.create({
   recap: {
     flex: 1,
     backgroundColor: color.raised,
+  },
+  // Brand mark: inside the captured view, so it lands in the live frame and the export alike
+  mark: {
+    position: 'absolute',
+    color: '#fff',
+    fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }),
+    letterSpacing: 0.5,
+    textShadowColor: 'rgba(0,0,0,0.35)',
+    textShadowRadius: 3,
   },
   overlay: {
     position: 'absolute',
