@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { FlatList, Modal, Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
-import { lastDays, stats, type History } from './history';
+import { lastDays, stats, type ArtistCount, type History } from './history';
 import type { Album } from './albums';
 import AlbumPage from './AlbumPage';
+import ArtistPage from './ArtistPage';
 import RangePicker from './RangePicker';
 import { AlbumRow, ArtistRow } from './StatRows';
 import { color } from './theme';
@@ -19,6 +20,7 @@ type Props = {
 // Every recorded album or artist, ranked, with the same range picker as the History sections.
 export default function TopList({ which, history, range, onRangeChange, onClose, onPickDay }: Props) {
   const [detail, setDetail] = useState<Album | null>(null);
+  const [artist, setArtist] = useState<ArtistCount | null>(null);
   const s = stats(range ? lastDays(history, range) : history);
   const title = which === 'albums' ? 'Top albums' : 'Top artists';
 
@@ -69,7 +71,19 @@ export default function TopList({ which, history, range, onRangeChange, onClose,
           {...common}
           data={s.topArtists}
           keyExtractor={(r) => String(r.artistId)}
-          renderItem={({ item }) => <ArtistRow {...item} />}
+          renderItem={({ item }) => <ArtistRow {...item} onPress={setArtist} />}
+        />
+      )}
+      {artist && (
+        <ArtistPage
+          artist={artist}
+          history={history}
+          onClose={() => setArtist(null)}
+          onPickArtist={setArtist}
+          onPickDay={(key) => {
+            setArtist(null);
+            onPickDay(key);
+          }}
         />
       )}
       {detail && (

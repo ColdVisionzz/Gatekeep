@@ -16,6 +16,9 @@ type DeezerAlbum = {
   artist: { id: number; name: string };
 };
 
+// Deezer redirects this to the artist's picture, so it works for history saved before pictures were tracked
+export const artistImage = (artistId: number) => `https://api.deezer.com/artist/${artistId}/image?size=big`;
+
 export function toAlbum(raw: DeezerAlbum): Album {
   return {
     id: raw.id,

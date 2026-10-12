@@ -2,10 +2,11 @@ import { useRef, useState } from 'react';
 import { FlatList, Modal, Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { formatDay, lastDays, stats, toDate, type History as HistoryData } from './history';
+import { formatDay, lastDays, stats, toDate, type ArtistCount, type History as HistoryData } from './history';
 import type { Album } from './albums';
 import { loadHistory } from './historyStore';
 import AlbumPage from './AlbumPage';
+import ArtistPage from './ArtistPage';
 import RangePicker from './RangePicker';
 import { AlbumRow, ArtistRow, ROW_H } from './StatRows';
 import TopList from './TopList';
@@ -33,6 +34,7 @@ export default function History({ onClose }: Props) {
   // Section whose full ranking is open; null while closed
   const [full, setFull] = useState<Section | null>(null);
   const [detail, setDetail] = useState<Album | null>(null);
+  const [artist, setArtist] = useState<ArtistCount | null>(null);
   const listRef = useRef<FlatList<string>>(null);
   // Stats follow the range; the day list below always shows every day, so a jump always has a row to land on
   const statsFor = (n: number | null) => stats(n ? lastDays(history, n) : history);
@@ -93,7 +95,7 @@ export default function History({ onClose }: Props) {
           <View style={styles.preview}>
             {artistStats.days === 0 && <Text style={styles.rangeEmpty}>No days in this range.</Text>}
             {artistStats.topArtists.slice(0, PREVIEW_ROWS).map((r) => (
-              <ArtistRow key={r.artistId} {...r} />
+              <ArtistRow key={r.artistId} {...r} onPress={setArtist} />
             ))}
           </View>
           <Text style={[styles.label, styles.section]}>Days</Text>
@@ -149,6 +151,18 @@ export default function History({ onClose }: Props) {
           onPickAlbum={setDetail}
           onPickDay={(key) => {
             setDetail(null);
+            jumpTo(key);
+          }}
+        />
+      )}
+      {artist && (
+        <ArtistPage
+          artist={artist}
+          history={history}
+          onClose={() => setArtist(null)}
+          onPickArtist={setArtist}
+          onPickDay={(key) => {
+            setArtist(null);
             jumpTo(key);
           }}
         />

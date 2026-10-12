@@ -39,6 +39,13 @@ export const albumDays = (h: History, id: number): string[] =>
     .sort()
     .reverse();
 
+// Days an artist had any album picked, newest first
+export const artistDays = (h: History, artistId: number): string[] =>
+  Object.keys(h)
+    .filter((k) => h[k].some((a) => a.artistId === artistId))
+    .sort()
+    .reverse();
+
 // The n albums most often picked on the same day as `id`
 export function topCombos(h: History, id: number, n = 3): { album: Album; count: number }[] {
   const combos = new Map<number, { album: Album; count: number }>();
@@ -54,6 +61,22 @@ export function topCombos(h: History, id: number, n = 3): { album: Album; count:
   return [...combos.values()]
     .sort((x, y) => y.count - x.count || x.album.title.localeCompare(y.album.title))
     .slice(0, n);
+}
+
+// The n other artists most often picked on the same day as `artistId`
+export function topArtistCombos(h: History, artistId: number, n = 3): ArtistCount[] {
+  const combos = new Map<number, ArtistCount>();
+  for (const day of Object.values(h)) {
+    if (!day.some((a) => a.artistId === artistId)) continue;
+    // A day counts once per artist, however many of their albums it holds
+    for (const a of new Map(day.map((x) => [x.artistId, x])).values()) {
+      if (a.artistId === artistId) continue;
+      const c = combos.get(a.artistId) ?? { artistId: a.artistId, name: a.artist, count: 0 };
+      c.count++;
+      combos.set(a.artistId, c);
+    }
+  }
+  return [...combos.values()].sort((x, y) => y.count - x.count || x.name.localeCompare(y.name)).slice(0, n);
 }
 
 export type AlbumCount = { album: Album; count: number };

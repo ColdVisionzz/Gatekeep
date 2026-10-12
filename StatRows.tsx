@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import type { AlbumCount, ArtistCount } from './history';
-import type { Album } from './albums';
+import { artistImage, type Album } from './albums';
 import { color } from './theme';
 
 // 44pt cover + 6pt padding top and bottom; a section of N rows is N * ROW_H tall
@@ -30,14 +30,21 @@ export function AlbumRow({ album, count, onPress }: AlbumCount & { onPress: (a: 
   );
 }
 
-export function ArtistRow({ name, count }: ArtistCount) {
+export function ArtistRow({ artistId, name, count, onPress }: ArtistCount & { onPress: (a: ArtistCount) => void }) {
   return (
-    <View style={styles.row} accessible accessibilityLabel={`${name}, picked ${count} times`}>
+    <Pressable
+      onPress={() => onPress({ artistId, name, count })}
+      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+      accessibilityRole="button"
+      accessibilityLabel={`${name}, picked ${count} times`}
+      accessibilityHint="Opens artist page"
+    >
+      <Image source={artistImage(artistId)} style={styles.thumb} />
       <Text style={[styles.name, styles.text]} numberOfLines={1}>
         {name}
       </Text>
       <Text style={styles.count}>×{count}</Text>
-    </View>
+    </Pressable>
   );
 }
 
