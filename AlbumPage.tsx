@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { albumDays, topCombos, type History } from './history';
+import { albumDays, topCombos, type ArtistCount, type History } from './history';
 import type { Album } from './albums';
+import ArtistPage from './ArtistPage';
 import { DayList, YearCalendar } from './DaysSection';
 import { color } from './theme';
 
@@ -17,6 +19,7 @@ type Props = {
 // One album: when it was picked (calendar and list) and what it is picked with.
 // Reads the full history, so the range picker in History never changes what this page shows.
 export default function AlbumPage({ album, history, onClose, onPickDay, onPickAlbum }: Props) {
+  const [artist, setArtist] = useState<ArtistCount | null>(null);
   const days = albumDays(history, album.id);
   const combos = topCombos(history, album.id);
 
@@ -40,9 +43,19 @@ export default function AlbumPage({ album, history, onClose, onPickDay, onPickAl
             <Text style={styles.title} numberOfLines={3}>
               {album.title}
             </Text>
-            <Text style={styles.sub} numberOfLines={1}>
-              {album.artist}
-            </Text>
+            <Pressable
+              // ArtistPage only reads the id and name; the count is for ranked lists
+              onPress={() => setArtist({ artistId: album.artistId, name: album.artist, count: 0 })}
+              hitSlop={8}
+              style={({ pressed }) => [styles.artist, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={`${album.artist}, artist page`}
+            >
+              <Text style={[styles.sub, styles.flex]} numberOfLines={1}>
+                {album.artist}
+              </Text>
+              <Ionicons name="chevron-forward" size={13} color={color.mute} />
+            </Pressable>
             <Text style={styles.sub}>
               Picked {days.length} {days.length === 1 ? 'time' : 'times'}
             </Text>
@@ -50,7 +63,7 @@ export default function AlbumPage({ album, history, onClose, onPickDay, onPickAl
         </View>
 
         <Text style={[styles.label, styles.section]}>Past year</Text>
-        <YearCalendar picked={new Set(days)} onPickDay={onPickDay} />
+        <YearCalendar counts={Object.fromEntries(days.map((d) => [d, 1]))} onPickDay={onPickDay} />
 
         {combos.length > 0 && (
           <>
@@ -81,6 +94,18 @@ export default function AlbumPage({ album, history, onClose, onPickDay, onPickAl
 
         <DayList days={days} onPickDay={onPickDay} />
       </ScrollView>
+      {artist && (
+        <ArtistPage
+          artist={artist}
+          history={history}
+          onClose={() => setArtist(null)}
+          onPickArtist={setArtist}
+          onPickDay={(key) => {
+            setArtist(null);
+            onPickDay(key);
+          }}
+        />
+      )}
     </Modal>
   );
 }
@@ -136,6 +161,12 @@ const styles = StyleSheet.create({
     color: color.mute,
     fontSize: 14,
   },
+  artist: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 2,
+  },
   label: {
     color: color.mute,
     fontSize: 13,
@@ -145,7 +176,6 @@ const styles = StyleSheet.create({
     marginTop: 28,
     marginBottom: 8,
   },
-  // Seven to a row; the padding in `cell` is the gap between dots
   statRow: {
     flexDirection: 'row',
     alignItems: 'center',

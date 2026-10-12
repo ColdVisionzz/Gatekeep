@@ -127,17 +127,22 @@ export default function History({ onClose }: Props) {
         ListHeaderComponent={header}
         ListEmptyComponent={<Text style={styles.empty}>No days yet. Share a recap to start your history.</Text>}
         renderItem={({ item: key }) => (
-          <View
-            style={styles.day}
-            accessible
-            accessibilityLabel={`${formatDay(key)}: ${history[key].map((a) => `${a.title} by ${a.artist}`).join(', ')}`}
-          >
+          <View style={styles.day}>
             <View style={styles.dayDate}>
               <DateStamp date={toDate(key)} height={14} />
             </View>
             <View style={styles.dayCovers}>
               {history[key].map((a, i) => (
-                <Image key={i} source={a.thumb} style={styles.dayThumb} />
+                <Pressable
+                  key={i}
+                  onPress={() => setDetail(a)}
+                  style={({ pressed }) => [styles.dayCover, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${a.title} by ${a.artist}, ${formatDay(key)}`}
+                  accessibilityHint="Opens album page"
+                >
+                  <Image source={a.thumb} style={styles.dayThumb} />
+                </Pressable>
               ))}
             </View>
           </View>
@@ -266,8 +271,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 6,
   },
-  dayThumb: {
+  dayCover: {
     flex: 1,
+  },
+  dayThumb: {
     aspectRatio: 1,
     borderRadius: 2,
     backgroundColor: color.raised,

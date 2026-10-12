@@ -46,6 +46,14 @@ export const artistDays = (h: History, artistId: number): string[] =>
     .sort()
     .reverse();
 
+// Albums by an artist picked per day (1-4), for the heatmap shades
+export const artistDayCounts = (h: History, artistId: number): Record<string, number> =>
+  Object.fromEntries(
+    Object.entries(h)
+      .map(([k, d]) => [k, d.filter((a) => a.artistId === artistId).length] as const)
+      .filter(([, n]) => n > 0),
+  );
+
 // The n albums most often picked on the same day as `id`
 export function topCombos(h: History, id: number, n = 3): { album: Album; count: number }[] {
   const combos = new Map<number, { album: Album; count: number }>();

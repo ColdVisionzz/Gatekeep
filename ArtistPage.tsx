@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { artistDays, stats, topArtistCombos, type ArtistCount, type History } from './history';
+import { artistDayCounts, artistDays, stats, topArtistCombos, type ArtistCount, type History } from './history';
 import { artistImage, type Album } from './albums';
 import AlbumPage from './AlbumPage';
 import { DayList, YearCalendar } from './DaysSection';
@@ -54,7 +54,7 @@ export default function ArtistPage({ artist, history, onClose, onPickDay, onPick
         </View>
 
         <Text style={[styles.label, styles.section]}>Past year</Text>
-        <YearCalendar picked={new Set(days)} onPickDay={onPickDay} />
+        <YearCalendar counts={artistDayCounts(history, artist.artistId)} shaded onPickDay={onPickDay} />
 
         <Text style={[styles.label, styles.section]}>Top albums</Text>
         {albums.map((r) => (
