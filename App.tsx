@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Linking, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Alert, AppState, Linking, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Image } from 'expo-image';
 import { CameraView, useCameraPermissions, type CameraType } from 'expo-camera';
@@ -13,7 +13,8 @@ import AlbumSearch from './AlbumSearch';
 import DateStamp from './DateStamp';
 import History from './History';
 import { dayKey } from './history';
-import { saveDay } from './historyStore';
+import { loadHistory, saveDay } from './historyStore';
+import { scheduleReminders } from './notifications';
 import { color } from './theme';
 
 const BAR = 112; // height of the control bar under the frame
@@ -27,6 +28,14 @@ async function saveToGallery(uri: string) {
   const album = await MediaLibrary.Album.get(GALLERY_ALBUM);
   if (album) await MediaLibrary.Asset.create(uri, album);
   else await MediaLibrary.Album.create(GALLERY_ALBUM, [uri], false);
+}
+
+function isDone() {
+  try {
+    return dayKey(new Date()) in loadHistory();
+  } catch {
+    return false;
+  }
 }
 
 export default function App() {
@@ -56,6 +65,17 @@ function Recap() {
   const markLoaded = (uri: string, status: 'ok' | 'error') => setLoadStatus((s) => ({ ...s, [uri]: status }));
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
+
+  // One gatekeep a day: today's history entry means it is done
+  const [done, setDone] = useState(isDone);
+  // Re-check on resume so a day change while backgrounded unlocks the camera
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => s === 'active' && setDone(isDone()));
+    return () => sub.remove();
+  }, []);
+  useEffect(() => {
+    scheduleReminders().catch(() => {}); // reminders are optional; never block the app
+  }, []);
 
   // Ask on first launch; after a denial the frame shows a button instead
   useEffect(() => {
@@ -105,6 +125,7 @@ function Recap() {
     // ponytail: shareAsync also resolves when the share sheet is dismissed (Android reports no result), so closing the sheet still saves the day
     try {
       saveDay(dayKey(new Date()), albums as Album[]);
+      setDone(true);
     } catch (e) {
       Alert.alert('Could not save to history', String(e));
     }
@@ -117,6 +138,15 @@ function Recap() {
   }
 
   function viewfinder() {
+    if (done) {
+      return (
+        <View style={styles.notice}>
+          <Text style={styles.stamp}>{dayKey(today)}</Text>
+          <Text style={styles.noticeTitle}>{"Today's gatekeep is done"}</Text>
+          <Text style={styles.noticeBody}>Come back tomorrow with four new albums.</Text>
+        </View>
+      );
+    }
     if (!permission) return null;
     if (!permission.granted) {
       return (
@@ -240,11 +270,11 @@ function Recap() {
             <Pressable
               key="shutter"
               onPress={shoot}
-              disabled={!cameraReady || shooting}
-              style={({ pressed }) => [styles.shutter, (!cameraReady || shooting) && styles.off, pressed && styles.shutterDown]}
+              disabled={!cameraReady || shooting || done}
+              style={({ pressed }) => [styles.shutter, (!cameraReady || shooting || done) && styles.off, pressed && styles.shutterDown]}
               accessibilityRole="button"
-              accessibilityLabel="Take photo"
-              accessibilityState={{ disabled: !cameraReady || shooting }}
+              accessibilityLabel={done ? "Today's gatekeep is already done" : 'Take photo'}
+              accessibilityState={{ disabled: !cameraReady || shooting || done }}
             >
               <View style={styles.shutterCore} />
             </Pressable>
@@ -363,6 +393,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 32,
     gap: 8,
+  },
+  // Echoes the date stamp's film-LED orange
+  stamp: {
+    color: color.imprint,
+    fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }),
+    fontSize: 15,
+    letterSpacing: 1,
   },
   noticeTitle: {
     color: color.text,
