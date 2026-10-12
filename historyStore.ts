@@ -19,6 +19,8 @@ export function loadHistory(): History {
 export function saveDay(key: string, albums: Album[]) {
   const h = loadHistory();
   h[key] = albums;
-  // ponytail: write is not atomic; a crash mid-write leaves a corrupt file that loadHistory sets aside. Write a temp file and swap it in if that ever happens.
-  historyFile().write(JSON.stringify(h));
+  // Write a temp file, then swap it in, so a crash mid-write never corrupts history.json
+  const tmp = new File(Paths.document, 'history.tmp.json');
+  tmp.write(JSON.stringify(h));
+  tmp.moveSync(historyFile(), { overwrite: true });
 }

@@ -68,13 +68,16 @@ function Recap() {
 
   // One gatekeep a day: today's history entry means it is done
   const [done, setDone] = useState(isDone);
-  // Re-check on resume so a day change while backgrounded unlocks the camera
+  // Re-check on launch and resume so a day change while backgrounded unlocks the camera and moves the reminders
   useEffect(() => {
-    const sub = AppState.addEventListener('change', (s) => s === 'active' && setDone(isDone()));
+    const sync = () => {
+      const d = isDone();
+      setDone(d);
+      scheduleReminders({ ask: false, skipToday: d }).catch(() => {}); // reminders are optional; never block the app
+    };
+    sync();
+    const sub = AppState.addEventListener('change', (s) => s === 'active' && sync());
     return () => sub.remove();
-  }, []);
-  useEffect(() => {
-    scheduleReminders().catch(() => {}); // reminders are optional; never block the app
   }, []);
 
   // Ask on first launch; after a denial the frame shows a button instead
@@ -100,8 +103,8 @@ function Recap() {
     try {
       const pic = await cameraRef.current.takePictureAsync({ quality: 0.85 });
       setPhotoUri(pic.uri);
-    } catch (e) {
-      Alert.alert('Photo failed', String(e));
+    } catch {
+      Alert.alert('Photo failed', 'Could not take the photo. Try again.');
     } finally {
       setShooting(false);
     }
@@ -117,23 +120,29 @@ function Recap() {
     try {
       // ponytail: view-shot scales the on-screen view to 1080x1920; on low-density screens this upscales. Render offscreen at full size if exports look soft.
       uri = await captureRef(recapRef, { format: 'png', width: 1080, height: 1920 });
-      await Sharing.shareAsync(uri, { mimeType: 'image/png' });
-    } catch (e) {
-      Alert.alert('Share failed', String(e));
+    } catch {
+      Alert.alert('Export failed', 'Could not export the image. Try again.');
       return;
     }
-    // ponytail: shareAsync also resolves when the share sheet is dismissed (Android reports no result), so closing the sheet still saves the day
+    // Save before the share sheet: shareAsync also resolves when the sheet is dismissed (Android reports no result),
+    // so dismissing must not cost the user the recap or the day.
     try {
       saveDay(dayKey(new Date()), albums as Album[]);
       setDone(true);
-    } catch (e) {
-      Alert.alert('Could not save to history', String(e));
+      // The first prompt for notifications comes here, after the first finished recap
+      scheduleReminders({ ask: true, skipToday: true }).catch(() => {});
+    } catch {
+      Alert.alert('Could not save to history', 'Your recap was not added to History.');
     }
-    // After the share sheet closes: an alert raised while it is up can't present on iOS
     try {
       await saveToGallery(uri);
-    } catch (e) {
-      Alert.alert('Could not save to gallery', String(e));
+    } catch {
+      Alert.alert('Could not save to gallery', 'The image was not saved to your photos.');
+    }
+    try {
+      await Sharing.shareAsync(uri, { mimeType: 'image/png' });
+    } catch {
+      Alert.alert('Share failed', 'Could not open the share sheet.');
     }
   }
 
