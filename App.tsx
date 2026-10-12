@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, AppState, Linking, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Alert, AppState, Linking, Platform, Pressable, StyleSheet, Text, useWindowDimensions, Vibration, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Image } from 'expo-image';
 import { CameraView, useCameraPermissions, type CameraType } from 'expo-camera';
@@ -9,6 +9,7 @@ import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import * as MediaLibrary from 'expo-media-library';
 import { Album } from './albums';
+import AlbumPage from './AlbumPage';
 import AlbumSearch from './AlbumSearch';
 import DateStamp from './DateStamp';
 import History from './History';
@@ -38,6 +39,23 @@ function isDone() {
   }
 }
 
+// Today's saved albums, so a relaunch on a done day still shows them in the slots
+function todayAlbums(): (Album | null)[] {
+  try {
+    const saved = loadHistory()[dayKey(new Date())];
+    if (Array.isArray(saved) && saved.length === 4) return saved; // anything else (corrupt entry) starts empty
+  } catch {}
+  return [null, null, null, null];
+}
+
+function albumHistory() {
+  try {
+    return loadHistory();
+  } catch {
+    return {};
+  }
+}
+
 export default function App() {
   return (
     <SafeAreaProvider>
@@ -54,11 +72,12 @@ function Recap() {
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [shooting, setShooting] = useState(false);
-  const [albums, setAlbums] = useState<(Album | null)[]>([null, null, null, null]);
+  const [albums, setAlbums] = useState(todayAlbums);
   const [searchSlot, setSearchSlot] = useState<number | null>(null);
   // Bumped on every pick so the slot's Image remounts, which retries a cover that failed to load
   const [slotKeys, setSlotKeys] = useState([0, 0, 0, 0]);
   const [showHistory, setShowHistory] = useState(false);
+  const [detail, setDetail] = useState<Album | null>(null); // album page, opened from a slot once the day is done
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   // Load status keyed by image URI (covers and photo), so swapping an image never reuses a stale status
   const [loadStatus, setLoadStatus] = useState<Record<string, 'ok' | 'error'>>({});
@@ -68,16 +87,32 @@ function Recap() {
 
   // One gatekeep a day: today's history entry means it is done
   const [done, setDone] = useState(isDone);
-  // Re-check on launch and resume so a day change while backgrounded unlocks the camera and moves the reminders
+  const [today, setToday] = useState(() => new Date());
+  const dayRef = useRef(dayKey(today));
+  // Re-check on launch, resume and the next midnight, so a day change unlocks the camera (even if the app stays open) and moves the reminders
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
     const sync = () => {
+      clearTimeout(timer);
+      const now = new Date();
       const d = isDone();
+      if (dayKey(now) !== dayRef.current) {
+        // New day: drop yesterday's photo and picks so they can't be shared as today's
+        dayRef.current = dayKey(now);
+        setToday(now);
+        setAlbums(todayAlbums());
+        setPhotoUri(null);
+      }
       setDone(d);
       scheduleReminders({ ask: false, skipToday: d }).catch(() => {}); // reminders are optional; never block the app
+      timer = setTimeout(sync, new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 1).getTime() - now.getTime());
     };
     sync();
     const sub = AppState.addEventListener('change', (s) => s === 'active' && sync());
-    return () => sub.remove();
+    return () => {
+      clearTimeout(timer);
+      sub.remove();
+    };
   }, []);
 
   // Ask on first launch; after a denial the frame shows a button instead
@@ -95,13 +130,13 @@ function Recap() {
   const failed = uris.some((u) => loadStatus[u] === 'error');
   // The live preview can't be captured (it exports black), so sharing waits for a still
   const ready = !!photoUri && missing === 0 && uris.every((u) => loadStatus[u] === 'ok');
-  const today = new Date();
 
   async function shoot() {
     if (!cameraRef.current || shooting) return;
     setShooting(true);
     try {
-      const pic = await cameraRef.current.takePictureAsync({ quality: 0.85 });
+      Vibration.vibrate(50); // replaces the system shutter sound
+      const pic = await cameraRef.current.takePictureAsync({ quality: 0.85, shutterSound: false });
       setPhotoUri(pic.uri);
     } catch {
       Alert.alert('Photo failed', 'Could not take the photo. Try again.');
@@ -219,7 +254,7 @@ function Recap() {
               {albums.map((album, i) => (
                 <Pressable
                   key={i}
-                  onPress={() => setSearchSlot(i)}
+                  onPress={() => (done ? album && setDetail(album) : setSearchSlot(i))}
                   style={({ pressed }) => [
                     styles.slot,
                     album ? styles.slotFilled : styles.slotEmpty,
@@ -310,6 +345,15 @@ function Recap() {
             setSearchSlot(null);
           }}
           onClose={() => setSearchSlot(null)}
+        />
+      )}
+      {detail && (
+        <AlbumPage
+          album={detail}
+          history={albumHistory()}
+          onClose={() => setDetail(null)}
+          onPickAlbum={setDetail}
+          onPickDay={() => setDetail(null)}
         />
       )}
       {showHistory && <History onClose={() => setShowHistory(false)} />}
